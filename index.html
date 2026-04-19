@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Uydu Fırlatma Simülatörü</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            text-align: center;
+            padding: 20px;
+        }
+        h1 {
+            color: #2c3e50;
+        }
+        #telemetry {
+            background-color: #fff;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body>
+    <h1>Uydu Fırlatma Simülatörü</h1>
+    <div id="telemetry">
+        <h2>Telemetri Verisi</h2>
+        <p>Yükseklik: <span id="altitude">0</span> m</p>
+        <p>Hız: <span id="speed">0</span> m/s</p>
+        <p>Durum: <span id="status">Bekliyor</span></p>
+    </div>
+    <button onclick="launchRocket()">Fırlat</button>
+    <script>
+        let altitude = 0;
+        let speed = 0;
+        let stage = 1;
+        let flightTimer;
+
+        function launchRocket() {
+            if (stage > 3) return;
+            status.innerText = 'Fırlatıldı!';
+            altitude = 0;
+            speed = 0;
+            flightTimer = setInterval(updateTelemetry, 1000);
+        }
+
+        function updateTelemetry() {
+            if (stage === 1) {
+                speed += 5;  // basit fizik simülasyonu
+                altitude += speed;
+                if (altitude > 15000) {
+                    stage++;  // 1. aşamadan 2. aşamaya geçiş
+                    speed = 0;
+                    altitude = 15000;
+                    alert('1. aşama tamamlandı!');
+                }
+            } else if (stage === 2) {
+                speed += 7;  // daha fazla itici güç
+                altitude += speed;
+                if (altitude > 30000) {
+                    stage++;
+                    speed = 0;
+                    altitude = 30000;
+                    alert('2. aşama tamamlandı!');
+                }
+            } else if (stage === 3) {
+                speed += 10;  // en üst seviyeye çıkma
+                altitude += speed;
+                if (altitude > 50000) {
+                    clearInterval(flightTimer);
+                    status.innerText = 'Başarıyla yörüngede!';
+                    alert('Simülasyon tamamlandı!');
+                }
+            }
+            altitudeDisplay.innerText = altitude.toFixed(2);
+            speedDisplay.innerText = speed.toFixed(2);
+        }
+    </script>
+</body>
+</html>
