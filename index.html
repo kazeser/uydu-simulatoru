@@ -195,6 +195,15 @@
     const G0 = 9.81;
     const MU = 3.986004418e14;
     const SCALE = 0.018;
+    const MIN_TARGET_ALTITUDE_KM = 300;
+    const MAX_TARGET_ALTITUDE_KM = 35786;
+    const LEO_ALTITUDE_KM = 400;
+    const GEO_ALTITUDE_KM = 35786;
+    const RCS_VY_DAMPING_FACTOR = 0.02;
+    const RCS_VY_MAX_CORRECTION = 25;
+    const RCS_TARGET_ORBITAL_RATIO = 0.95;
+    const RCS_VX_BOOST = 12;
+    const RCS_MASS_REFERENCE = 700;
     const PHASES = {
       ready: "Hazır",
       ascending: "Yükseliş",
@@ -308,6 +317,10 @@
     let earth, atmosphere, rocketGroup, plume;
     const debris = [];
     const stageMeshes = [];
+    const activeStageEmissive = new THREE.Color(0x442211);
+    const inactiveStageEmissive = new THREE.Color(0x000000);
+    const plumeDirection = new THREE.Vector3();
+    const plumeLateral = new THREE.Vector3();
 
     function initScene() {
       scene = new THREE.Scene();
@@ -346,9 +359,9 @@
       atmosphere = new THREE.Mesh(atmoGeo, atmoMat);
       scene.add(atmosphere);
 
-      [50, 120, 300, 400, 35786].forEach((km) => {
+      [50, 120, MIN_TARGET_ALTITUDE_KM, LEO_ALTITUDE_KM, GEO_ALTITUDE_KM].forEach((km) => {
         const ringGeo = new THREE.RingGeometry((PLANET_RADIUS_KM + km) * SCALE, (PLANET_RADIUS_KM + km) * SCALE + 0.2, 160);
-        const ringMat = new THREE.MeshBasicMaterial({ color: km === 35786 ? 0xff6b35 : 0x00d4ff, side: THREE.DoubleSide, transparent: true, opacity: 0.36 });
+        const ringMat = new THREE.MeshBasicMaterial({ color: km === GEO_ALTITUDE_KM ? 0xff6b35 : 0x00d4ff, side: THREE.DoubleSide, transparent: true, opacity: 0.36 });
         const ring = new THREE.Mesh(ringGeo, ringMat);
         ring.rotation.x = Math.PI / 2;
         scene.add(ring);
@@ -456,10 +469,10 @@
     function applyRcsStabilization(mass) {
       const stage = state.stages[state.stageIndex];
       if (!stage || !stage.rcs) return;
-      const vyCorrection = -Math.sign(state.vy) * Math.min(Math.abs(state.vy) * 0.02, 25);
-      const vxBoost = state.vx < 0.95 * calcOrbitalVelocity(state.altitude) ? 12 : 0;
-      state.vy += vyCorrection * state.dt / Math.max(1, mass / 700);
-      state.vx += vxBoost * state.dt / Math.max(1, mass / 700);
+      const vyCorrection = -Math.sign(state.vy) * Math.min(Math.abs(state.vy) * RCS_VY_DAMPING_FACTOR, RCS_VY_MAX_CORRECTION);
+      const vxBoost = state.vx < RCS_TARGET_ORBITAL_RATIO * calcOrbitalVelocity(state.altitude) ? RCS_VX_BOOST : 0;
+      state.vy += vyCorrection * state.dt / Math.max(1, mass / RCS_MASS_REFERENCE);
+      state.vx += vxBoost * state.dt / Math.max(1, mass / RCS_MASS_REFERENCE);
     }
 
     function flightStep() {
@@ -538,20 +551,22 @@
       rocketGroup.rotation.z = Math.PI / 2 - pitchDeg * (Math.PI / 180);
 
       stageMeshes.forEach((m, i) => {
-        m.material.emissive = new THREE.Color(i === state.stageIndex ? 0x442211 : 0x000000);
+        m.material.emissive.copy(i === state.stageIndex ? activeStageEmissive : inactiveStageEmissive);
         m.visible = i >= state.stageIndex;
       });
 
       const positions = plume.geometry.attributes.position.array;
       plume.visible = state.running && state.currentThrust > 1000;
       if (plume.visible) {
-        const dir = new THREE.Vector3(Math.cos(rocketGroup.rotation.z - Math.PI / 2), Math.sin(rocketGroup.rotation.z - Math.PI / 2), 0).normalize();
+        plumeDirection.set(Math.cos(rocketGroup.rotation.z - Math.PI / 2), Math.sin(rocketGroup.rotation.z - Math.PI / 2), 0).normalize();
+        plumeLateral.set(-plumeDirection.y, plumeDirection.x, 0);
         for (let i = 0; i < positions.length; i += 3) {
           const spread = (Math.random() - 0.5) * 1.4;
           const len = 6 + Math.random() * 12 * (state.currentThrust / 350000);
-          const lateral = new THREE.Vector3(-dir.y, dir.x, 0).multiplyScalar(spread);
-          positions[i] = rocketGroup.position.x - dir.x * len + lateral.x;
-          positions[i + 1] = rocketGroup.position.y - dir.y * len + lateral.y;
+          const lateralX = plumeLateral.x * spread;
+          const lateralY = plumeLateral.y * spread;
+          positions[i] = rocketGroup.position.x - plumeDirection.x * len + lateralX;
+          positions[i + 1] = rocketGroup.position.y - plumeDirection.y * len + lateralY;
           positions[i + 2] = (Math.random() - 0.5) * 2;
         }
         plume.geometry.attributes.position.needsUpdate = true;
@@ -624,10 +639,10 @@
       if (state.running) return;
       state.launchAngleDeg = Number(ui.launchAngle.value);
       state.thrustPercent = Number(ui.thrustPercent.value) / 100;
-      state.targetAltitudeKm = Math.max(300, Math.min(35786, Number(ui.targetAltitude.value) || 400));
+      state.targetAltitudeKm = Math.max(MIN_TARGET_ALTITUDE_KM, Math.min(MAX_TARGET_ALTITUDE_KM, Number(ui.targetAltitude.value) || LEO_ALTITUDE_KM));
       state.payloadMass = Number(ui.payloadMass.value);
       if (state.thrustPercent <= 0) {
-        setPhase("failed", "İtme %0 olamaz.");
+        setPhase("failed", "İtme 0% olamaz.");
         return;
       }
       state.running = true;
@@ -639,10 +654,10 @@
       ui.thrustPercent.addEventListener("input", () => ui.thrustPercentValue.textContent = `%${ui.thrustPercent.value}`);
       ui.payloadMass.addEventListener("input", () => ui.payloadValue.textContent = `${ui.payloadMass.value} kg`);
       ui.targetAltitude.addEventListener("change", () => {
-        ui.targetAltitude.value = Math.max(300, Math.min(35786, Number(ui.targetAltitude.value) || 400));
+        ui.targetAltitude.value = Math.max(MIN_TARGET_ALTITUDE_KM, Math.min(MAX_TARGET_ALTITUDE_KM, Number(ui.targetAltitude.value) || LEO_ALTITUDE_KM));
       });
-      ui.presetLEO.addEventListener("click", () => { ui.targetAltitude.value = 400; state.targetAltitudeKm = 400; });
-      ui.presetGEO.addEventListener("click", () => { ui.targetAltitude.value = 35786; state.targetAltitudeKm = 35786; });
+      ui.presetLEO.addEventListener("click", () => { ui.targetAltitude.value = LEO_ALTITUDE_KM; state.targetAltitudeKm = LEO_ALTITUDE_KM; });
+      ui.presetGEO.addEventListener("click", () => { ui.targetAltitude.value = GEO_ALTITUDE_KM; state.targetAltitudeKm = GEO_ALTITUDE_KM; });
       ui.launchBtn.addEventListener("click", launch);
       ui.resetBtn.addEventListener("click", resetState);
     }
