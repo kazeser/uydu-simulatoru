@@ -1,81 +1,672 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Uydu Fırlatma Simülatörü</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f0f0f0;
-            text-align: center;
-            padding: 20px;
-        }
-        h1 {
-            color: #2c3e50;
-        }
-        #telemetry {
-            background-color: #fff;
-            padding: 10px;
-            border-radius: 5px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>3 Aşamalı Uydu Fırlatma Simülatörü</title>
+  <style>
+    :root {
+      --space: #0a0e27;
+      --cyan: #00d4ff;
+      --orange: #ff6b35;
+      --glass: rgba(255, 255, 255, 0.08);
+      --glass-border: rgba(255, 255, 255, 0.2);
+      --text: #e9f6ff;
+      --muted: #9ab4c3;
+      --ok: #16f29b;
+      --bad: #ff4f6d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at 20% 0%, #1a2558, var(--space) 45%);
+      color: var(--text);
+      font-family: "Inter", "Segoe UI", Arial, sans-serif;
+      overflow: hidden;
+    }
+    .app {
+      display: grid;
+      grid-template-columns: minmax(280px, 340px) 1fr minmax(280px, 360px);
+      height: 100vh;
+      gap: 14px;
+      padding: 14px;
+    }
+    .panel {
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      border-radius: 16px;
+      backdrop-filter: blur(14px);
+      padding: 16px;
+      overflow: auto;
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+    }
+    .panel h1, .panel h2, .panel h3 { margin: 0 0 12px; }
+    .panel h1 { font-size: 1.1rem; color: var(--cyan); }
+    .panel h2 { font-size: 1rem; color: var(--orange); }
+    .control { margin-bottom: 12px; }
+    .control label { display: block; font-size: .88rem; color: var(--muted); margin-bottom: 6px; }
+    .control input[type="range"], .control input[type="number"] { width: 100%; }
+    .control input[type="number"] {
+      background: rgba(0,0,0,.35);
+      border: 1px solid var(--glass-border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 8px;
+    }
+    .value { color: var(--cyan); font-weight: 700; }
+    .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0; }
+    button {
+      border: 1px solid var(--glass-border);
+      border-radius: 10px;
+      background: rgba(255,255,255,0.08);
+      color: var(--text);
+      padding: 10px 8px;
+      cursor: pointer;
+      transition: .2s;
+      font-weight: 700;
+    }
+    button:hover { transform: translateY(-1px); border-color: var(--cyan); }
+    button.primary { background: linear-gradient(90deg, #007ea5, #00d4ff); color: #00131b; border: none; }
+    button.warn { background: linear-gradient(90deg, #b4451b, #ff6b35); color: #160700; border: none; }
+    #scene-container { position: relative; border-radius: 16px; overflow: hidden; border: 1px solid var(--glass-border); }
+    #scene-container canvas { display: block; width: 100%; height: 100%; }
+    .mission-box {
+      border-radius: 10px;
+      padding: 10px;
+      border: 1px solid var(--glass-border);
+      background: rgba(0,0,0,.3);
+      margin-top: 10px;
+      font-size: .9rem;
+    }
+    .mission-box.ok { border-color: var(--ok); color: var(--ok); }
+    .mission-box.fail { border-color: var(--bad); color: var(--bad); }
+    .telemetry-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      font-size: .88rem;
+    }
+    .metric {
+      background: rgba(0,0,0,.3);
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: 10px;
+      padding: 8px;
+    }
+    .metric strong { display: block; color: var(--muted); font-size: .72rem; margin-bottom: 4px; }
+    .metric span { color: var(--cyan); font-weight: 700; }
+    .stage-card {
+      margin-top: 8px;
+      background: rgba(0, 0, 0, 0.28);
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: 12px;
+      padding: 8px;
+    }
+    .stage-card.active { border-color: var(--orange); box-shadow: inset 0 0 0 1px rgba(255,107,53,.5); }
+    .bar {
+      width: 100%;
+      background: rgba(255,255,255,.12);
+      border-radius: 10px;
+      overflow: hidden;
+      height: 9px;
+      margin-top: 4px;
+    }
+    .bar > div {
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(90deg, #00d4ff, #16f29b);
+      transition: width .2s linear;
+    }
+    .formula {
+      color: var(--muted);
+      font-size: .78rem;
+      line-height: 1.45;
+      margin-top: 10px;
+    }
+    @media (max-width: 1220px) {
+      .app { grid-template-columns: 1fr; grid-auto-rows: minmax(280px, auto) 52vh minmax(280px, auto); height: auto; min-height: 100vh; }
+      body { overflow: auto; }
+      #scene-container { min-height: 52vh; }
+    }
+  </style>
 </head>
 <body>
-    <h1>Uydu Fırlatma Simülatörü</h1>
-    <div id="telemetry">
-        <h2>Telemetri Verisi</h2>
-        <p>Yükseklik: <span id="altitude">0</span> m</p>
-        <p>Hız: <span id="speed">0</span> m/s</p>
-        <p>Durum: <span id="status">Bekliyor</span></p>
-    </div>
-    <button onclick="launchRocket()">Fırlat</button>
-    <script>
-        let altitude = 0;
-        let speed = 0;
-        let stage = 1;
-        let flightTimer;
+  <div class="app">
+    <aside class="panel">
+      <h1>🚀 Görev Kontrol Merkezi</h1>
+      <div class="control">
+        <label for="launch-angle">Fırlatma Açısı: <span class="value" id="launch-angle-value">85°</span></label>
+        <input id="launch-angle" type="range" min="0" max="90" value="85" />
+      </div>
+      <div class="control">
+        <label for="thrust-percent">İtme Yüzdesi: <span class="value" id="thrust-percent-value">%100</span></label>
+        <input id="thrust-percent" type="range" min="0" max="100" value="100" />
+      </div>
+      <div class="control">
+        <label for="target-altitude">Hedef İrtifa (km)</label>
+        <input id="target-altitude" type="number" min="300" max="35786" value="400" />
+      </div>
+      <div class="control">
+        <label for="payload-mass">Yük Kütlesi: <span class="value" id="payload-value">300 kg</span></label>
+        <input id="payload-mass" type="range" min="100" max="1000" value="300" />
+      </div>
+      <div class="btn-row">
+        <button id="preset-leo">LEO (400km)</button>
+        <button id="preset-geo">GEO (35786km)</button>
+      </div>
+      <div class="btn-row">
+        <button id="launch-btn" class="primary">FIRLAT</button>
+        <button id="reset-btn" class="warn">SIFIRLA</button>
+      </div>
+      <div class="mission-box" id="objective-box">Görev Hedefi: 400 km irtifada kararlı yörünge.</div>
+      <div class="formula">
+        g = (9.81 × R²) / (R + h)²<br>
+        F<sub>d</sub> = 0.5 × ρ × v² × C<sub>d</sub> × A<br>
+        Δv = I<sub>sp</sub> × g<sub>0</sub> × ln(m<sub>0</sub>/m<sub>f</sub>)
+      </div>
+    </aside>
 
-        function launchRocket() {
-            if (stage > 3) return;
-            status.innerText = 'Fırlatıldı!';
-            altitude = 0;
-            speed = 0;
-            flightTimer = setInterval(updateTelemetry, 1000);
-        }
+    <main id="scene-container"></main>
 
-        function updateTelemetry() {
-            if (stage === 1) {
-                speed += 5;  // basit fizik simülasyonu
-                altitude += speed;
-                if (altitude > 15000) {
-                    stage++;  // 1. aşamadan 2. aşamaya geçiş
-                    speed = 0;
-                    altitude = 15000;
-                    alert('1. aşama tamamlandı!');
-                }
-            } else if (stage === 2) {
-                speed += 7;  // daha fazla itici güç
-                altitude += speed;
-                if (altitude > 30000) {
-                    stage++;
-                    speed = 0;
-                    altitude = 30000;
-                    alert('2. aşama tamamlandı!');
-                }
-            } else if (stage === 3) {
-                speed += 10;  // en üst seviyeye çıkma
-                altitude += speed;
-                if (altitude > 50000) {
-                    clearInterval(flightTimer);
-                    status.innerText = 'Başarıyla yörüngede!';
-                    alert('Simülasyon tamamlandı!');
-                }
-            }
-            altitudeDisplay.innerText = altitude.toFixed(2);
-            speedDisplay.innerText = speed.toFixed(2);
+    <aside class="panel">
+      <h2>📡 Telemetri</h2>
+      <div class="telemetry-grid">
+        <div class="metric"><strong>İRTİFA</strong><span id="t-alt">0.00 km</span></div>
+        <div class="metric"><strong>DİKEY HIZ</strong><span id="t-vy">0.0 m/s</span></div>
+        <div class="metric"><strong>YATAY HIZ</strong><span id="t-vx">0.0 m/s</span></div>
+        <div class="metric"><strong>G-KUVVETİ</strong><span id="t-g">1.00 g</span></div>
+        <div class="metric"><strong>TOPLAM KÜTLE</strong><span id="t-mass">0 kg</span></div>
+        <div class="metric"><strong>İTME ÇIKIŞI</strong><span id="t-thrust">0 kN</span></div>
+        <div class="metric"><strong>ATMOSFER YOĞ.</strong><span id="t-rho">1.225 kg/m³</span></div>
+        <div class="metric"><strong>UÇUŞ ZAMANI</strong><span id="t-time">00:00</span></div>
+      </div>
+      <h3>Aşama Durumu</h3>
+      <div id="stage-cards"></div>
+      <div class="mission-box" id="status-box">Durum: Hazır</div>
+      <div class="formula" id="dv-box">Toplam tahmini Δv: 0 m/s</div>
+    </aside>
+  </div>
+
+  <script type="module">
+    import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.161/build/three.module.js";
+    import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.161/examples/jsm/controls/OrbitControls.js";
+
+    const PLANET_RADIUS_KM = 6371;
+    const G0 = 9.81;
+    const MU = 3.986004418e14;
+    const SCALE = 0.018;
+    const MIN_TARGET_ALTITUDE_KM = 300;
+    const MAX_TARGET_ALTITUDE_KM = 35786;
+    const LEO_ALTITUDE_KM = 400;
+    const GEO_ALTITUDE_KM = 35786;
+    const RCS_VY_DAMPING_FACTOR = 0.02;
+    const RCS_VY_MAX_CORRECTION = 25;
+    const RCS_TARGET_ORBITAL_RATIO = 0.95;
+    const RCS_VX_BOOST = 12;
+    const RCS_MASS_REFERENCE = 700;
+    const PHASES = {
+      ready: "Hazır",
+      ascending: "Yükseliş",
+      stage1_sep: "1. aşama ayrıldı",
+      stage2_burning: "2. aşama yanışı",
+      stage2_sep: "2. aşama ayrıldı",
+      stage3_insertion: "3. aşama yörüngeye yerleşiyor",
+      orbiting: "Yörüngede",
+      failed: "Görev Başarısız"
+    };
+
+    const stageBlueprints = [
+      { name: "Aşama 1 - Booster", dryMass: 6000, fuelMass: 5500, thrust: 350000, Isp: 265, separationAltitudeKm: 50, cd: 0.6, area: 7.8 },
+      { name: "Aşama 2 - Ana Motor", dryMass: 2000, fuelMass: 1800, thrust: 180000, Isp: 310, separationAltitudeKm: 120, cd: 0.45, area: 4.5 },
+      { name: "Aşama 3 - Uydu + RCS", dryMass: 500, fuelMass: 100, thrust: 20000, Isp: 340, separationAltitudeKm: Infinity, cd: 0.28, area: 1.8, rcs: true }
+    ];
+
+    const ui = {
+      launchAngle: document.getElementById("launch-angle"),
+      launchAngleValue: document.getElementById("launch-angle-value"),
+      thrustPercent: document.getElementById("thrust-percent"),
+      thrustPercentValue: document.getElementById("thrust-percent-value"),
+      targetAltitude: document.getElementById("target-altitude"),
+      payloadMass: document.getElementById("payload-mass"),
+      payloadValue: document.getElementById("payload-value"),
+      objectiveBox: document.getElementById("objective-box"),
+      statusBox: document.getElementById("status-box"),
+      stageCards: document.getElementById("stage-cards"),
+      launchBtn: document.getElementById("launch-btn"),
+      resetBtn: document.getElementById("reset-btn"),
+      presetLEO: document.getElementById("preset-leo"),
+      presetGEO: document.getElementById("preset-geo"),
+      tAlt: document.getElementById("t-alt"),
+      tVy: document.getElementById("t-vy"),
+      tVx: document.getElementById("t-vx"),
+      tG: document.getElementById("t-g"),
+      tMass: document.getElementById("t-mass"),
+      tThrust: document.getElementById("t-thrust"),
+      tRho: document.getElementById("t-rho"),
+      tTime: document.getElementById("t-time"),
+      dvBox: document.getElementById("dv-box")
+    };
+
+    const state = {
+      running: false,
+      dt: 0.1,
+      time: 0,
+      altitude: 0,
+      downrange: 0,
+      vx: 0,
+      vy: 0,
+      launchAngleDeg: 85,
+      thrustPercent: 1,
+      targetAltitudeKm: 400,
+      payloadMass: 300,
+      stageIndex: 0,
+      stages: [],
+      phase: "ready",
+      currentThrust: 0,
+      gForce: 1,
+      rho: 1.225
+    };
+
+    function cloneStages() {
+      return stageBlueprints.map((s) => ({ ...s, fuel: s.fuelMass, initialFuel: s.fuelMass }));
+    }
+    function calcGravity(altitudeMeters) {
+      const hKm = altitudeMeters / 1000;
+      return (G0 * PLANET_RADIUS_KM * PLANET_RADIUS_KM) / ((PLANET_RADIUS_KM + hKm) ** 2);
+    }
+    function calcAtmosphericDensity(altitudeMeters) {
+      const hKm = altitudeMeters / 1000;
+      if (hKm < 15) return 1.225 * Math.exp(-hKm / 8.5);
+      if (hKm < 50) return 0.012 * Math.exp(-(hKm - 15) / 6.5);
+      return 0;
+    }
+    function calcDragForce(rho, speed, cd, area) {
+      return 0.5 * rho * speed * speed * cd * area;
+    }
+    function calcMassFlowRate(thrustN, isp) {
+      return thrustN / (isp * G0);
+    }
+    function calcDeltaV(m0, mf, isp) {
+      return mf <= 0 || m0 <= mf ? 0 : isp * G0 * Math.log(m0 / mf);
+    }
+    function calcOrbitalVelocity(altitudeMeters) {
+      return Math.sqrt(MU / ((PLANET_RADIUS_KM * 1000) + altitudeMeters));
+    }
+    function totalMass() {
+      let mass = state.payloadMass;
+      for (let i = state.stageIndex; i < state.stages.length; i++) {
+        mass += state.stages[i].dryMass + Math.max(0, state.stages[i].fuel);
+      }
+      return Math.max(mass, 1);
+    }
+    function estimatedTotalDeltaV() {
+      let payload = state.payloadMass;
+      let total = 0;
+      for (let i = stageBlueprints.length - 1; i >= 0; i--) {
+        const stage = stageBlueprints[i];
+        const upperMass = payload;
+        const m0 = upperMass + stage.dryMass + stage.fuelMass;
+        const mf = upperMass + stage.dryMass;
+        total += calcDeltaV(m0, mf, stage.Isp);
+        payload += stage.dryMass + stage.fuelMass;
+      }
+      return total;
+    }
+
+    let renderer, scene, camera, controls;
+    let earth, atmosphere, rocketGroup, plume;
+    const debris = [];
+    const stageMeshes = [];
+    const activeStageEmissive = new THREE.Color(0x442211);
+    const inactiveStageEmissive = new THREE.Color(0x000000);
+    const plumeDirection = new THREE.Vector3();
+    const plumeLateral = new THREE.Vector3();
+
+    function initScene() {
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x050816);
+      camera = new THREE.PerspectiveCamera(55, 1, 0.1, 4000);
+      camera.position.set(250, 170, 320);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(sceneContainer.clientWidth, sceneContainer.clientHeight);
+      sceneContainer.appendChild(renderer.domElement);
+
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.minDistance = 120;
+      controls.maxDistance = 1500;
+
+      scene.add(new THREE.AmbientLight(0x8bc7ff, 0.6));
+      const sun = new THREE.DirectionalLight(0xffffff, 1.2);
+      sun.position.set(300, 120, 220);
+      scene.add(sun);
+
+      const earthRadius = PLANET_RADIUS_KM * SCALE;
+      const earthGeo = new THREE.SphereGeometry(earthRadius, 64, 64);
+      const earthMat = new THREE.MeshPhongMaterial({ color: 0x2265a8, shininess: 10 });
+      earth = new THREE.Mesh(earthGeo, earthMat);
+      scene.add(earth);
+
+      new THREE.TextureLoader().load(
+        "https://threejs.org/examples/textures/land_ocean_ice_cloud_2048.jpg",
+        (tex) => { earth.material.map = tex; earth.material.needsUpdate = true; }
+      );
+
+      const atmoGeo = new THREE.SphereGeometry(earthRadius * 1.03, 48, 48);
+      const atmoMat = new THREE.MeshBasicMaterial({ color: 0x5f9dff, transparent: true, opacity: 0.18 });
+      atmosphere = new THREE.Mesh(atmoGeo, atmoMat);
+      scene.add(atmosphere);
+
+      [50, 120, MIN_TARGET_ALTITUDE_KM, LEO_ALTITUDE_KM, GEO_ALTITUDE_KM].forEach((km) => {
+        const ringGeo = new THREE.RingGeometry((PLANET_RADIUS_KM + km) * SCALE, (PLANET_RADIUS_KM + km) * SCALE + 0.2, 160);
+        const ringMat = new THREE.MeshBasicMaterial({ color: km === GEO_ALTITUDE_KM ? 0xff6b35 : 0x00d4ff, side: THREE.DoubleSide, transparent: true, opacity: 0.36 });
+        const ring = new THREE.Mesh(ringGeo, ringMat);
+        ring.rotation.x = Math.PI / 2;
+        scene.add(ring);
+      });
+
+      buildRocket();
+      buildPlume();
+      window.addEventListener("resize", onResize);
+      onResize();
+    }
+
+    function buildRocket() {
+      rocketGroup = new THREE.Group();
+      const body1 = new THREE.Mesh(
+        new THREE.CylinderGeometry(2.1, 2.3, 22, 24),
+        new THREE.MeshStandardMaterial({ color: 0xf4f6f8, metalness: 0.35, roughness: 0.25 })
+      );
+      body1.position.y = 11;
+      const body2 = new THREE.Mesh(
+        new THREE.CylinderGeometry(1.4, 1.6, 13, 24),
+        new THREE.MeshStandardMaterial({ color: 0xaec4dd, metalness: 0.45, roughness: 0.3 })
+      );
+      body2.position.y = 28.5;
+      const body3 = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.95, 1.1, 8, 20),
+        new THREE.MeshStandardMaterial({ color: 0xffc88d, metalness: 0.4, roughness: 0.26 })
+      );
+      body3.position.y = 39.5;
+      const cone = new THREE.Mesh(
+        new THREE.ConeGeometry(0.95, 3.8, 20),
+        new THREE.MeshStandardMaterial({ color: 0xe8eff7 })
+      );
+      cone.position.y = 45.5;
+      rocketGroup.add(body1, body2, body3, cone);
+      stageMeshes.push(body1, body2, body3);
+      scene.add(rocketGroup);
+      updateRocketPose();
+    }
+
+    function buildPlume() {
+      const count = 220;
+      const positions = new Float32Array(count * 3);
+      plume = new THREE.Points(
+        new THREE.BufferGeometry(),
+        new THREE.PointsMaterial({ color: 0xff7d3f, size: 1.5, transparent: true, opacity: 0.68, blending: THREE.AdditiveBlending, depthWrite: false })
+      );
+      plume.geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      plume.visible = false;
+      scene.add(plume);
+    }
+
+    function spawnSeparationDebris() {
+      const group = new THREE.Group();
+      const geometry = new THREE.SphereGeometry(0.4, 6, 6);
+      for (let i = 0; i < 24; i++) {
+        const mat = new THREE.MeshBasicMaterial({ color: i % 2 ? 0xff6b35 : 0x00d4ff, transparent: true, opacity: 0.9 });
+        const shard = new THREE.Mesh(geometry, mat);
+        shard.position.copy(rocketGroup.position);
+        shard.userData.v = new THREE.Vector3((Math.random() - 0.5) * 7, (Math.random() - 0.2) * 7, (Math.random() - 0.5) * 7);
+        group.add(shard);
+      }
+      scene.add(group);
+      debris.push({ group, life: 1.1 });
+    }
+
+    function onResize() {
+      const w = sceneContainer.clientWidth;
+      const h = sceneContainer.clientHeight;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+    }
+
+    function setPhase(phase, detail = "") {
+      state.phase = phase;
+      ui.statusBox.className = "mission-box";
+      ui.statusBox.textContent = `Durum: ${PHASES[phase]}${detail ? ` — ${detail}` : ""}`;
+      if (phase === "orbiting") ui.statusBox.classList.add("ok");
+      if (phase === "failed") ui.statusBox.classList.add("fail");
+    }
+
+    function resetState() {
+      state.running = false;
+      state.time = 0;
+      state.altitude = 0;
+      state.downrange = 0;
+      state.vx = 0;
+      state.vy = 0;
+      state.stageIndex = 0;
+      state.currentThrust = 0;
+      state.gForce = 1;
+      state.rho = 1.225;
+      state.stages = cloneStages();
+      setPhase("ready");
+      updateRocketPose();
+      updateTelemetry();
+    }
+
+    function separateStage(nextPhase) {
+      spawnSeparationDebris();
+      state.stageIndex = Math.min(state.stageIndex + 1, state.stages.length - 1);
+      setPhase(nextPhase);
+    }
+
+    function applyRcsStabilization(mass) {
+      const stage = state.stages[state.stageIndex];
+      if (!stage || !stage.rcs) return;
+      const vyCorrection = -Math.sign(state.vy) * Math.min(Math.abs(state.vy) * RCS_VY_DAMPING_FACTOR, RCS_VY_MAX_CORRECTION);
+      const vxBoost = state.vx < RCS_TARGET_ORBITAL_RATIO * calcOrbitalVelocity(state.altitude) ? RCS_VX_BOOST : 0;
+      state.vy += vyCorrection * state.dt / Math.max(1, mass / RCS_MASS_REFERENCE);
+      state.vx += vxBoost * state.dt / Math.max(1, mass / RCS_MASS_REFERENCE);
+    }
+
+    function flightStep() {
+      const stage = state.stages[state.stageIndex];
+      const mass = totalMass();
+      const g = calcGravity(state.altitude);
+      state.rho = calcAtmosphericDensity(state.altitude);
+      const speed = Math.hypot(state.vx, state.vy);
+
+      const pitchDeg = Math.max(5, state.launchAngleDeg - (state.altitude / 1000) * 0.27);
+      const pitchRad = pitchDeg * (Math.PI / 180);
+      const dirX = Math.cos(pitchRad);
+      const dirY = Math.sin(pitchRad);
+
+      let thrust = stage.thrust * state.thrustPercent;
+      let burnRequired = calcMassFlowRate(thrust, stage.Isp) * state.dt;
+      if (burnRequired > stage.fuel) {
+        thrust *= stage.fuel / Math.max(burnRequired, 1e-6);
+        burnRequired = stage.fuel;
+      }
+      stage.fuel = Math.max(0, stage.fuel - burnRequired);
+      state.currentThrust = thrust;
+
+      const drag = calcDragForce(state.rho, speed, stage.cd, stage.area);
+      const dragX = speed > 0 ? -drag * (state.vx / speed) : 0;
+      const dragY = speed > 0 ? -drag * (state.vy / speed) : 0;
+
+      const thrustX = thrust * dirX;
+      const thrustY = thrust * dirY;
+      const ax = (thrustX + dragX) / mass;
+      const ay = (thrustY + dragY - mass * g) / mass;
+
+      state.vx += ax * state.dt;
+      state.vy += ay * state.dt;
+      applyRcsStabilization(mass);
+      state.downrange += state.vx * state.dt;
+      state.altitude = Math.max(0, state.altitude + state.vy * state.dt);
+      state.gForce = Math.max(0, Math.hypot(ax, ay + g) / G0);
+
+      const km = state.altitude / 1000;
+      if (state.stageIndex === 0 && (km >= stage.separationAltitudeKm || stage.fuel <= 0)) {
+        setPhase("stage1_sep");
+        separateStage("stage2_burning");
+      } else if (state.stageIndex === 1 && (km >= stage.separationAltitudeKm || stage.fuel <= 0)) {
+        setPhase("stage2_sep");
+        separateStage("stage3_insertion");
+      }
+
+      const speedNow = Math.hypot(state.vx, state.vy);
+      const orbital = calcOrbitalVelocity(state.altitude);
+      if (km >= state.targetAltitudeKm && state.stageIndex === 2 && stage.fuel <= 0) {
+        if (speedNow >= orbital * 0.85 && speedNow <= orbital * 1.15) {
+          state.running = false;
+          setPhase("orbiting", "Uydu hedef yörüngede.");
+        } else if (speedNow < orbital * 0.85) {
+          state.running = false;
+          setPhase("failed", "Hız düşük: uydu geri düşüyor.");
+        } else {
+          state.running = false;
+          setPhase("failed", "Hız yüksek: uydu kaçış hızına yaklaştı.");
         }
-    </script>
+      }
+
+      if (!state.running && state.phase !== "orbiting" && state.phase !== "failed") {
+        setPhase("failed", "Yakıt bitti, yörünge sağlanamadı.");
+      }
+      if (state.altitude <= 0 && state.time > 10 && state.vy < -20) {
+        state.running = false;
+        setPhase("failed", "Araç atmosfere geri girdi.");
+      }
+    }
+
+    function updateRocketPose() {
+      rocketGroup.position.set(state.downrange * SCALE, PLANET_RADIUS_KM * SCALE + state.altitude * SCALE / 1000, 0);
+      const pitchDeg = Math.max(5, state.launchAngleDeg - (state.altitude / 1000) * 0.27);
+      rocketGroup.rotation.z = Math.PI / 2 - pitchDeg * (Math.PI / 180);
+
+      stageMeshes.forEach((m, i) => {
+        m.material.emissive.copy(i === state.stageIndex ? activeStageEmissive : inactiveStageEmissive);
+        m.visible = i >= state.stageIndex;
+      });
+
+      const positions = plume.geometry.attributes.position.array;
+      plume.visible = state.running && state.currentThrust > 1000;
+      if (plume.visible) {
+        plumeDirection.set(Math.cos(rocketGroup.rotation.z - Math.PI / 2), Math.sin(rocketGroup.rotation.z - Math.PI / 2), 0).normalize();
+        plumeLateral.set(-plumeDirection.y, plumeDirection.x, 0);
+        for (let i = 0; i < positions.length; i += 3) {
+          const spread = (Math.random() - 0.5) * 1.4;
+          const len = 6 + Math.random() * 12 * (state.currentThrust / 350000);
+          const lateralX = plumeLateral.x * spread;
+          const lateralY = plumeLateral.y * spread;
+          positions[i] = rocketGroup.position.x - plumeDirection.x * len + lateralX;
+          positions[i + 1] = rocketGroup.position.y - plumeDirection.y * len + lateralY;
+          positions[i + 2] = (Math.random() - 0.5) * 2;
+        }
+        plume.geometry.attributes.position.needsUpdate = true;
+      }
+    }
+
+    function updateDebris(dt) {
+      for (let i = debris.length - 1; i >= 0; i--) {
+        const cloud = debris[i];
+        cloud.life -= dt * 0.65;
+        cloud.group.children.forEach((chunk) => {
+          chunk.position.addScaledVector(chunk.userData.v, dt);
+          chunk.material.opacity = Math.max(cloud.life, 0);
+        });
+        if (cloud.life <= 0) {
+          scene.remove(cloud.group);
+          debris.splice(i, 1);
+        }
+      }
+    }
+
+    function fmtTime(seconds) {
+      const min = Math.floor(seconds / 60).toString().padStart(2, "0");
+      const sec = Math.floor(seconds % 60).toString().padStart(2, "0");
+      return `${min}:${sec}`;
+    }
+
+    function updateTelemetry() {
+      const speed = Math.hypot(state.vx, state.vy);
+      ui.tAlt.textContent = `${(state.altitude / 1000).toFixed(2)} km`;
+      ui.tVy.textContent = `${state.vy.toFixed(1)} m/s`;
+      ui.tVx.textContent = `${state.vx.toFixed(1)} m/s`;
+      ui.tG.textContent = `${state.gForce.toFixed(2)} g`;
+      ui.tMass.textContent = `${Math.round(totalMass())} kg`;
+      ui.tThrust.textContent = `${(state.currentThrust / 1000).toFixed(1)} kN`;
+      ui.tRho.textContent = `${state.rho.toFixed(4)} kg/m³`;
+      ui.tTime.textContent = fmtTime(state.time);
+      ui.objectiveBox.textContent = `Görev Hedefi: ${state.targetAltitudeKm} km irtifada ${Math.round(calcOrbitalVelocity(state.targetAltitudeKm * 1000))} m/s ±%15 hız aralığı.`;
+      ui.dvBox.textContent = `Toplam tahmini Δv: ${estimatedTotalDeltaV().toFixed(0)} m/s | Anlık hız: ${speed.toFixed(1)} m/s`;
+
+      ui.stageCards.innerHTML = "";
+      state.stages.forEach((s, i) => {
+        const percent = s.initialFuel > 0 ? (s.fuel / s.initialFuel) * 100 : 0;
+        const card = document.createElement("div");
+        card.className = `stage-card${i === state.stageIndex ? " active" : ""}`;
+        card.innerHTML = `
+          <strong>${s.name}</strong><br>
+          Yakıt: ${Math.max(0, s.fuel).toFixed(1)} / ${s.initialFuel} kg
+          <div class="bar"><div style="width:${Math.max(0, Math.min(100, percent))}%"></div></div>
+        `;
+        ui.stageCards.appendChild(card);
+      });
+    }
+
+    function loop() {
+      requestAnimationFrame(loop);
+      if (state.running) {
+        state.time += state.dt;
+        flightStep();
+      }
+      updateRocketPose();
+      updateDebris(state.dt);
+      updateTelemetry();
+      controls.update();
+      earth.rotation.y += 0.0005;
+      renderer.render(scene, camera);
+    }
+
+    function launch() {
+      if (state.running) return;
+      state.launchAngleDeg = Number(ui.launchAngle.value);
+      state.thrustPercent = Number(ui.thrustPercent.value) / 100;
+      state.targetAltitudeKm = Math.max(MIN_TARGET_ALTITUDE_KM, Math.min(MAX_TARGET_ALTITUDE_KM, Number(ui.targetAltitude.value) || LEO_ALTITUDE_KM));
+      state.payloadMass = Number(ui.payloadMass.value);
+      if (state.thrustPercent <= 0) {
+        setPhase("failed", "İtme 0% olamaz.");
+        return;
+      }
+      state.running = true;
+      setPhase("ascending", "Aşama 1 ateşlendi.");
+    }
+
+    function bindUI() {
+      ui.launchAngle.addEventListener("input", () => ui.launchAngleValue.textContent = `${ui.launchAngle.value}°`);
+      ui.thrustPercent.addEventListener("input", () => ui.thrustPercentValue.textContent = `%${ui.thrustPercent.value}`);
+      ui.payloadMass.addEventListener("input", () => ui.payloadValue.textContent = `${ui.payloadMass.value} kg`);
+      ui.targetAltitude.addEventListener("change", () => {
+        ui.targetAltitude.value = Math.max(MIN_TARGET_ALTITUDE_KM, Math.min(MAX_TARGET_ALTITUDE_KM, Number(ui.targetAltitude.value) || LEO_ALTITUDE_KM));
+      });
+      ui.presetLEO.addEventListener("click", () => { ui.targetAltitude.value = LEO_ALTITUDE_KM; state.targetAltitudeKm = LEO_ALTITUDE_KM; });
+      ui.presetGEO.addEventListener("click", () => { ui.targetAltitude.value = GEO_ALTITUDE_KM; state.targetAltitudeKm = GEO_ALTITUDE_KM; });
+      ui.launchBtn.addEventListener("click", launch);
+      ui.resetBtn.addEventListener("click", resetState);
+    }
+
+    const sceneContainer = document.getElementById("scene-container");
+    initScene();
+    bindUI();
+    resetState();
+    loop();
+  </script>
 </body>
 </html>
